@@ -1,0 +1,108 @@
+From 7f80eb9011b20a8712601e0db640711aa9b3b18d Mon Sep 17 00:00:00 2001
+From: Nik Cubrilovic <git@nikcub.me>
+Date: Sun, 29 Aug 2021 07:55:56 +1000
+Subject: [PATCH] FEAT: limitsize patch
+
+FEAT: limit_size option
+---
+ src/ftp.c     | 8 ++++++++
+ src/http.c    | 8 ++++++++
+ src/init.c    | 1 +
+ src/main.c    | 3 +++
+ src/options.h | 2 ++
+ 5 files changed, 22 insertions(+)
+
+diff --git a/src/ftp.c b/src/ftp.c
+index ea7621e..e5e52a0 100644
+--- a/src/ftp.c
++++ b/src/ftp.c
+@@ -2262,6 +2262,14 @@ ftp_retrieve_list (struct url *u, struct url *original_url,
+       err = RETROK;
+ 
+       dlthis = true;
++
++      if ((f->type == FT_PLAINFILE) && opt.limit_size && (f->size > opt.limit_size))
++      {
++          logprintf (LOG_VERBOSE, _("%s -- remote file size (%s) "), quote (con->target), human_readable(f->size, 10, 1));
++          logprintf (LOG_VERBOSE, _("is bigger than limit-size (%s) option -- not retrieving.\n"), human_readable(opt.limit_size, 10, 1));
++          dlthis = false;
++      }
++
+       if (opt.timestamping && f->type == FT_PLAINFILE)
+         {
+           struct stat st;
+diff --git a/src/http.c b/src/http.c
+index 0525c2a..fadb85d 100644
+--- a/src/http.c
++++ b/src/http.c
+@@ -4027,6 +4027,13 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
+         }
+     }
+ 
++  if (opt.limit_size && (contlen != -1) && (contlen > opt.limit_size))
++    {
++      logprintf (LOG_VERBOSE, _("%s -- remote file size (%s) "), quote (u->path), human_readable(contlen, 10, 1));
++      logprintf (LOG_VERBOSE, _("is bigger than limit-size (%s) option -- not retrieving.\n"), human_readable(opt.limit_size, 10, 1));
++      goto mylabel;
++    };
++
+   if (statcode == HTTP_STATUS_RANGE_NOT_SATISFIABLE
+       || (!opt.timestamping && hs->restval > 0 && statcode == HTTP_STATUS_OK
+           && contrange == 0 && contlen >= 0 && hs->restval >= contlen))
+@@ -4037,6 +4044,7 @@ gethttp (const struct url *u, struct url *original_url, struct http_stat *hs,
+          (or 200 with a <= Content-Length.  */
+       logputs (LOG_VERBOSE, _("\
+ \n    The file is already fully retrieved; nothing to do.\n\n"));
++    mylabel:
+       /* In case the caller inspects. */
+       hs->len = contlen;
+       hs->res = 0;
+diff --git a/src/init.c b/src/init.c
+index a94f19f..27f3e0d 100644
+--- a/src/init.c
++++ b/src/init.c
+@@ -250,6 +250,7 @@ static const struct {
+   { "keepbadhash",      &opt.keep_badhash,      cmd_boolean },
+   { "keepsessioncookies", &opt.keep_session_cookies, cmd_boolean },
+   { "limitrate",        &opt.limit_rate,        cmd_bytes },
++  { "limitsize",        &opt.limit_size,        cmd_bytes },
+   { "loadcookies",      &opt.cookies_input,     cmd_file },
+   { "localencoding",    &opt.locale,            cmd_string },
+   { "logfile",          &opt.lfilename,         cmd_file },
+diff --git a/src/main.c b/src/main.c
+index e506b21..c55a6d0 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -362,6 +362,7 @@ static struct cmdline_option option_data[] =
+     { "keep-session-cookies", 0, OPT_BOOLEAN, "keepsessioncookies", -1 },
+     { "level", 'l', OPT_VALUE, "reclevel", -1 },
+     { "limit-rate", 0, OPT_VALUE, "limitrate", -1 },
++    { "limit-size", 0, OPT_VALUE, "limitsize", -1 },
+     { "load-cookies", 0, OPT_VALUE, "loadcookies", -1 },
+     { "local-encoding", 0, OPT_VALUE, "localencoding", -1 },
+     { "rejected-log", 0, OPT_VALUE, "rejectedlog", -1 },
+@@ -709,6 +710,8 @@ Download:\n"),
+        --bind-address=ADDRESS      bind to ADDRESS (hostname or IP) on local host\n"),
+     N_("\
+        --limit-rate=RATE           limit download rate to RATE\n"),
++    N_("\
++       --limit-size=SIZE           limit download file size to SIZE.\n"),
+     N_("\
+        --no-dns-cache              disable caching DNS lookups\n"),
+     N_("\
+diff --git a/src/options.h b/src/options.h
+index 6d4c17c..ace6146 100644
+--- a/src/options.h
++++ b/src/options.h
+@@ -171,6 +171,8 @@ struct options
+ 
+   wgint limit_rate;             /* Limit the download rate to this
+                                    many bps. */
++  wgint limit_size;		/* Limit the download file size. */
++
+   SUM_SIZE_INT quota;           /* Maximum file size to download and
+                                    store. */
+ 
+-- 
+2.33.0
+
